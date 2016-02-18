@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 extern crate serde_json;
 use serde_json::Value;
 
+use super::error::ClarifaiError;
+
 #[derive(Debug)]
 pub struct TagResult {
     doc_id: String,
@@ -13,8 +15,8 @@ pub struct TagResult {
 }
 
 impl TagResult {
-    pub fn from_json(json_string: String) -> Result<Vec<TagResult>, String> {
-        let json: BTreeMap<String, Value> = try!(serde_json::from_str(&json_string).map_err(|e| e.to_string()));
+    pub fn from_json(json_string: String) -> Result<Vec<TagResult>, ClarifaiError> {
+        let json: BTreeMap<String, Value> = try!(serde_json::from_str(&json_string));
 
         let raw_results: &Value = json.get("results").unwrap();
         let results: Vec<BTreeMap<String, Value>> = raw_results.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect();

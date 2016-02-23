@@ -11,7 +11,7 @@ pub struct TagResult {
     source: String,
 
     concept_ids: Vec<String>,
-    tag_map: BTreeMap<String, f64>
+    tag_map: BTreeMap<String, f64>,
 }
 
 impl TagResult {
@@ -19,7 +19,13 @@ impl TagResult {
         let json: BTreeMap<String, Value> = try!(serde_json::from_str(&json_string));
 
         let raw_results: &Value = json.get("results").unwrap();
-        let results: Vec<BTreeMap<String, Value>> = raw_results.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect();
+        let results: Vec<BTreeMap<String, Value>> = raw_results.as_array()
+                                                               .unwrap()
+                                                               .iter()
+                                                               .map(|v| {
+                                                                   v.as_object().unwrap().clone()
+                                                               })
+                                                               .collect();
 
         let mut tag_results: Vec<TagResult> = vec![];
         for result in results {
@@ -27,18 +33,36 @@ impl TagResult {
 
             let source = result.get("url").unwrap().as_string().unwrap().to_string();
 
-            let inner_result: &BTreeMap<String, Value> =
-                result.get("result").unwrap().as_object().unwrap().get("tag").unwrap().as_object().unwrap();
-            let concept_ids: Vec<String> = inner_result.get("concept_ids").unwrap().as_array().unwrap().iter()
-                .map(|v| v.as_string().unwrap().to_string())
-                .collect();
+            let inner_result: &BTreeMap<String, Value> = result.get("result")
+                                                               .unwrap()
+                                                               .as_object()
+                                                               .unwrap()
+                                                               .get("tag")
+                                                               .unwrap()
+                                                               .as_object()
+                                                               .unwrap();
+            let concept_ids: Vec<String> = inner_result.get("concept_ids")
+                                                       .unwrap()
+                                                       .as_array()
+                                                       .unwrap()
+                                                       .iter()
+                                                       .map(|v| v.as_string().unwrap().to_string())
+                                                       .collect();
 
-            let mut classes: Vec<String> = inner_result.get("classes").unwrap().as_array().unwrap().iter()
-                .map(|v| v.as_string().unwrap().to_string())
-                .collect();
-            let mut probs:  Vec<f64> = inner_result.get("probs").unwrap().as_array().unwrap().iter()
-                .map(|v| v.as_f64().unwrap())
-                .collect();
+            let mut classes: Vec<String> = inner_result.get("classes")
+                                                       .unwrap()
+                                                       .as_array()
+                                                       .unwrap()
+                                                       .iter()
+                                                       .map(|v| v.as_string().unwrap().to_string())
+                                                       .collect();
+            let mut probs: Vec<f64> = inner_result.get("probs")
+                                                  .unwrap()
+                                                  .as_array()
+                                                  .unwrap()
+                                                  .iter()
+                                                  .map(|v| v.as_f64().unwrap())
+                                                  .collect();
 
             let mut tag_map: BTreeMap<String, f64> = BTreeMap::new();
 
@@ -51,7 +75,7 @@ impl TagResult {
                 source: source,
 
                 concept_ids: concept_ids,
-                tag_map: tag_map
+                tag_map: tag_map,
             });
         }
 

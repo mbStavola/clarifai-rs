@@ -4,7 +4,8 @@ use std::fmt;
 extern crate serde_json;
 extern crate hyper;
 
-use self::ClarifaiError::{ConversionError, HttpStatusError, HyperError,MissingFieldError, SerdeError};
+use self::ClarifaiError::{ConversionError, HttpStatusError, HyperError, MissingFieldError,
+                          SerdeError};
 
 #[derive(Debug)]
 pub enum ClarifaiError {
@@ -12,7 +13,7 @@ pub enum ClarifaiError {
     HttpStatusError,
     HyperError(hyper::Error),
     MissingFieldError,
-    SerdeError(serde_json::Error)
+    SerdeError(serde_json::Error),
 }
 
 impl fmt::Display for ClarifaiError {
@@ -28,7 +29,7 @@ impl Error for ClarifaiError {
             HttpStatusError => "Non-200 HTTP response from server",
             HyperError(ref e) => e.description(),
             MissingFieldError => "No such field exists",
-            SerdeError(ref e) => e.description()
+            SerdeError(ref e) => e.description(),
         }
     }
 
@@ -36,7 +37,7 @@ impl Error for ClarifaiError {
         match *self {
             HyperError(ref e) => Some(e),
             SerdeError(ref e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }

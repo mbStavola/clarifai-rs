@@ -23,7 +23,9 @@ fn test() {
     let mut client = client.unwrap();
     println!("{:#?}", client);
 
-    let urls = vec!["http://i.imgur.com/DMOkjFF.jpg", "http://i.imgur.com/93VdKBI.png", "http://i.imgur.com/rfRu6ct.jpg"];
+    let urls = vec!["http://i.imgur.com/DMOkjFF.jpg",
+                    "http://i.imgur.com/93VdKBI.png",
+                    "http://i.imgur.com/rfRu6ct.jpg"];
     let results: Vec<TagResult> = client.tag(urls).unwrap();
 
     for result in results {
@@ -33,14 +35,14 @@ fn test() {
     let doc_ids = vec![];
     let tags = vec![];
     client.add_tags(doc_ids, tags);
-    //let client = Clarifai::new("client_id",  "client_secret")
-    //client.info()
-    //client.tag(images: Vec<Path>)
-    //client.tag(urls: Vec<&str>)
-    //client.add_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
-    //client.remove_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
-    //client.add_similarity(doc_ids: Vec<&str>, similars: Vec<&str>)
-    //client.add_dissimilarity(doc_ids: Vec<&str>, dissimilars: Vec<&str>)
+    // let client = Clarifai::new("client_id",  "client_secret")
+    // client.info()
+    // client.tag(images: Vec<Path>)
+    // client.tag(urls: Vec<&str>)
+    // client.add_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
+    // client.remove_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
+    // client.add_similarity(doc_ids: Vec<&str>, similars: Vec<&str>)
+    // client.add_dissimilarity(doc_ids: Vec<&str>, dissimilars: Vec<&str>)
 }
 
 #[derive(Debug)]
@@ -51,13 +53,13 @@ pub struct Clarifai<'a> {
     headers: Headers,
     expires_in: u64,
 
-    acquired: i64
+    acquired: i64,
 }
 
 #[derive(Debug)]
 pub struct Tag<'a> {
     doc_id: &'a str,
-    tags: &'a BTreeMap<&'a str, f32>
+    tags: &'a BTreeMap<&'a str, f32>,
 }
 
 impl <'a> Clarifai<'a> {
@@ -69,7 +71,7 @@ impl <'a> Clarifai<'a> {
             headers: Headers::new(),
             expires_in: 0,
 
-            acquired: 0
+            acquired: 0,
         };
 
         try!(client.get_access_token());
@@ -78,47 +80,35 @@ impl <'a> Clarifai<'a> {
     }
 
     fn get_access_token(&mut self) -> Result<(), ClarifaiError> {
-        let body =
-            format!("grant_type=client_credentials&client_id={}&client_secret={}", self.client_id, self.client_secret);
+        let body = format!("grant_type=client_credentials&client_id={}&client_secret={}",
+                           self.client_id,
+                           self.client_secret);
 
         let client = Client::new();
-        let mut response = try!(
-            client.post("https://api.clarifai.com/v1/token/")
-            .body(&body)
-            .header(ContentType::form_url_encoded())
-            .send()
-        );
+        let mut response = try!(client.post("https://api.clarifai.com/v1/token/")
+                                      .body(&body)
+                                      .header(ContentType::form_url_encoded())
+                                      .send());
 
         if response.status == StatusCode::Ok {
             let mut json_string = String::new();
             response.read_to_string(&mut json_string);
 
             let json: Value = try!(serde_json::from_str(&json_string));
-            let object: &BTreeMap<String, Value> =  try!(json.as_object().ok_or(ClarifaiError::ConversionError));
+            let object: &BTreeMap<String, Value> = try!(json.as_object()
+                                                            .ok_or(ClarifaiError::ConversionError));
 
-            let access_token: &Value = try!(object.get("access_token").ok_or(ClarifaiError::MissingFieldError));
-            let access_token: &str = try!(access_token.as_string().ok_or(ClarifaiError::ConversionError));
-            self.headers.set(
-               Authorization(
-                   Bearer {
-                       token: access_token.to_string()
-                   }
-               )
-            );
-            self.headers.set(
-                ContentType(
-                    Mime(
-                        TopLevel::Application,
-                        SubLevel::WwwFormUrlEncoded,
-                        vec![]
-                    )
-                )
-            );
-            self.headers.set(
-                UserAgent("clarifai-rs".to_string())
-            );
+            let access_token: &Value = try!(object.get("access_token")
+                                                  .ok_or(ClarifaiError::MissingFieldError));
+            let access_token: &str = try!(access_token.as_string()
+                                                      .ok_or(ClarifaiError::ConversionError));
+            self.headers.set(Authorization(Bearer { token: access_token.to_string() }));
+            self.headers
+                .set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
+            self.headers.set(UserAgent("clarifai-rs".to_string()));
 
-            let expires_in: &Value = try!(object.get("expires_in").ok_or(ClarifaiError::MissingFieldError));
+            let expires_in: &Value = try!(object.get("expires_in")
+                                                .ok_or(ClarifaiError::MissingFieldError));
             self.expires_in = try!(expires_in.as_u64().ok_or(ClarifaiError::ConversionError));
 
             self.acquired = time::get_time().sec;
@@ -153,10 +143,10 @@ impl <'a> Clarifai<'a> {
 
         let client = Client::new();
         let mut response = client.post("https://api.clarifai.com/v1/tag/")
-            .body(&body)
-            .headers(self.headers.clone())
-            .send()
-            .unwrap();
+                                 .body(&body)
+                                 .headers(self.headers.clone())
+                                 .send()
+                                 .unwrap();
 
         let mut json_string = String::new();
         response.read_to_string(&mut json_string);
@@ -173,10 +163,10 @@ impl <'a> Clarifai<'a> {
 
         let client = Client::new();
         let response = client.post("https://api.clarifai.com/v1/token/")
-            .body(body)
-            .headers(self.headers.clone())
-            .send()
-            .unwrap();
+                             .body(body)
+                             .headers(self.headers.clone())
+                             .send()
+                             .unwrap();
 
         if response.status == StatusCode::Ok {
             Ok(())

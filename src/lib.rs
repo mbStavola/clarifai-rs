@@ -1,86 +1,44 @@
-use std::collections::BTreeMap;
-use std::io::Read;
+#![feature(custom_derive, plugin)]
+#![plugin(serde_macros)]
 
-extern crate hyper;
-use hyper::Client;
-use hyper::header::{Authorization, Bearer, ContentType, Headers, UserAgent};
-use hyper::mime::{Mime, SubLevel, TopLevel};
-use hyper::status::StatusCode;
+use std::cell::{Cell, RefCell};
+use std::ops::Deref;
 
-extern crate serde_json;
-use serde_json::Value;
+extern crate curs;
+use curs::{Request, FileUpload, DecodableResult, Method, CursError};
+use curs::hyper::header::{Authorization, Basic, Bearer, UserAgent};
+
+extern crate serde;
 
 extern crate time;
 
 mod model;
-use model::tag_result::TagResult;
+use model::ClarifaiResponse;
+use model::image::{Image, ImageUrl};
+use model::oauth::OAuth;
 
-mod error;
-use error::ClarifaiError;
+static CLARIFAI_URL: &'static str = "https://api2-prod.clarifai.com/v2";
 
-#[test]
-fn test() {
-    let client = Clarifai::new("placeholder",
-                               "use-your-own");
-    let mut client = client.unwrap();
-    println!("{:#?}", client);
-
-    let urls = vec!["https://www.rust-lang.org/logos/rust-logo-512x512.png"];
-    let mut results = client.tag(&urls).unwrap();
-
-    let mut doc_ids: Vec<String> = vec![];
-    for result in results {
-        doc_ids.push(result.doc_id);
-    }
-
-    let tags = vec!["clarifai", "serde", "hyper"];
-    client.add_tags(&doc_ids, &tags);
-
-    results = client.tag(&urls).unwrap();
-
-    for result in results {
-        println!("{:#?}", result);
-    }
-
-    client.remove_tags(&doc_ids, &tags);
-
-    results = client.tag(&urls).unwrap();
-
-    for result in results {
-        println!("{:#?}", result);
-    }
-
-    // let client = Clarifai::new("client_id",  "client_secret")
-    // client.info()
-    // client.tag(images: Vec<Path>)
-    // client.tag(urls: Vec<&str>)
-    // client.add_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
-    // client.remove_tags(doc_ids: Vec<&str>, tags: Vec<&str>)
-    // client.add_similarity(doc_ids: Vec<&str>, similars: Vec<&str>)
-    // client.add_dissimilarity(doc_ids: Vec<&str>, dissimilars: Vec<&str>)
-}
-
-#[derive(Debug)]
 pub struct Clarifai<'a> {
     client_id: &'a str,
     client_secret: &'a str,
 
-    headers: Headers,
-    expires_in: u64,
+    access_token: RefCell<String>,
 
-    acquired: i64,
+    expires_in: Cell<u64>,
+    acquired: Cell<i64>,
 }
 
 impl<'a> Clarifai<'a> {
-    pub fn new(client_id: &'a str, client_secret: &'a str) -> Result<Clarifai<'a>, ClarifaiError> {
-        let mut client = Clarifai {
+    pub fn new(client_id: &'a str, client_secret: &'a str) -> ClarifaiResult<Clarifai<'a>> {
+        let client = Clarifai {
             client_id: client_id,
             client_secret: client_secret,
 
-            headers: Headers::new(),
-            expires_in: 0,
+            access_token: RefCell::new(String::new()),
 
-            acquired: 0,
+            expires_in: Cell::new(0),
+            acquired: Cell::new(0),
         };
 
         try!(client.get_access_token());
@@ -88,124 +46,81 @@ impl<'a> Clarifai<'a> {
         Ok(client)
     }
 
-    fn get_access_token(&mut self) -> Result<(), ClarifaiError> {
-        let body = format!("grant_type=client_credentials&client_id={}&client_secret={}",
-                           self.client_id,
-                           self.client_secret);
+    fn get_access_token(&self) -> ClarifaiResult<()> {
+        let request_url = &request_url("token");
 
-        let client = Client::new();
-        let mut response = try!(client.post("https://api.clarifai.com/v1/token/")
-                                      .body(&body)
-                                      .header(ContentType::form_url_encoded())
-                                      .send());
+        let response: OAuth = try!(Request::new(Method::Post, request_url)
+                                       .header(Authorization(Basic {
+                                           username: self.client_id.to_string(),
+                                           password: Some(self.client_secret.to_string()),
+                                       }))
+                                       .header(UserAgent("clarifai-rs".to_string()))
+                                       .send()
+                                       .decode_success());
 
-        if response.status == StatusCode::Ok {
-            let mut json_string = String::new();
-            response.read_to_string(&mut json_string);
 
-            let json: Value = try!(serde_json::from_str(&json_string));
-            let object: &BTreeMap<String, Value> = try!(json.as_object()
-                                                            .ok_or(ClarifaiError::ConversionError));
+        let mut access_token = self.access_token.borrow_mut();
+        access_token.clear();
+        access_token.push_str(&response.access_token);
 
-            let access_token: &Value = try!(object.get("access_token")
-                                                  .ok_or(ClarifaiError::MissingFieldError));
-            let access_token: &str = try!(access_token.as_string()
-                                                      .ok_or(ClarifaiError::ConversionError));
-            self.headers.set(Authorization(Bearer { token: access_token.to_string() }));
-            self.headers
-                .set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
-            self.headers.set(UserAgent("clarifai-rs".to_string()));
+        self.expires_in.set(response.expires_in);
+        self.acquired.set(time::get_time().sec);
 
-            let expires_in: &Value = try!(object.get("expires_in")
-                                                .ok_or(ClarifaiError::MissingFieldError));
-            self.expires_in = try!(expires_in.as_u64().ok_or(ClarifaiError::ConversionError));
-
-            self.acquired = time::get_time().sec;
-
-            return Ok(());
-        }
-
-        Err(ClarifaiError::HttpStatusError)
+        Ok(())
     }
 
-    fn ensure_validity(&mut self) -> Result<(), ClarifaiError> {
-        let delta = (time::get_time().sec - self.acquired) as u64;
+    fn ensure_validity(&self) -> ClarifaiResult<()> {
+        let delta = (time::get_time().sec - self.acquired.get()) as u64;
 
-        if delta >= self.expires_in {
+        if delta >= self.expires_in.get() {
             try!(self.get_access_token());
         }
 
         Ok(())
     }
 
-    pub fn tag(&mut self, urls: &Vec<&str>) -> Result<Vec<TagResult>, ClarifaiError> {
-        try!(self.ensure_validity());
-
-        let mut url_iter = urls.iter();
-        let mut body: String = format!("url={}", url_iter.next().unwrap());
-
-        for url in url_iter {
-            let parameter = format!("&url={}", url);
-
-            body.push_str(&parameter);
-        }
-
-        let client = Client::new();
-        let mut response = client.post("https://api.clarifai.com/v1/tag/")
-                                 .body(&body)
-                                 .headers(self.headers.clone())
-                                 .send()
-                                 .unwrap();
-
-        let mut json_string = String::new();
-        response.read_to_string(&mut json_string);
-
-        TagResult::from_json(json_string)
+    fn add_headers(&self, request: &mut Request) {
+        request.header(Authorization(Bearer { token: self.access_token.borrow().deref().to_string() }))
+               .header(UserAgent("clarifai-rs".to_string()));
     }
 
-    pub fn add_tags(&mut self,
-                    doc_ids: &Vec<String>,
-                    tags: &Vec<&str>)
-                    -> Result<(), ClarifaiError> {
+    pub fn add_image(&self, image_url: &str) -> ClarifaiResult<Image> {
         try!(self.ensure_validity());
 
-        let doc_ids = format!("docids={}", doc_ids.join(","));
-        let tags = format!("add_tags={}", tags.join(","));
-        let body = &format!("{}&{}", doc_ids, tags);
+        let request_url = "http://requestb.in/192k4mo1";
 
-        let client = Client::new();
-        let response = client.post("https://api.clarifai.com/v1/feedback/")
-                             .body(body)
-                             .headers(self.headers.clone())
-                             .send()
-                             .unwrap();
+        let mut request = Request::new(Method::Post, request_url);
+        request.json(ImageUrl { url: image_url });
 
-        if response.status == StatusCode::Ok {
-            Ok(())
-        } else {
-            Err(ClarifaiError::HttpStatusError)
-        }
+        self.add_headers(&mut request);
+
+        let response: ClarifaiResponse<Image> = try!(request.send().decode_success());
+        Ok(response.results)
     }
 
-    fn remove_tags(&mut self,
-                   doc_ids: &Vec<String>,
-                   tags: &Vec<&str>)
-                   -> Result<(), ClarifaiError> {
-        let doc_ids = format!("docids={}", doc_ids.join(","));
-        let tags = format!("remove_tags={}", tags.join(","));
-        let body = &format!("{}&{}", doc_ids, tags);
+    pub fn add_images(&self, image_urls: Vec<&str>) -> ClarifaiResult<Vec<Image>> {
+        try!(self.ensure_validity());
 
-        let client = Client::new();
-        let response = client.post("https://api.clarifai.com/v1/feedback/")
-                             .body(body)
-                             .headers(self.headers.clone())
-                             .send()
-                             .unwrap();
+        let request_url = &request_url("images/bulk");
 
-        if response.status == StatusCode::Ok {
-            Ok(())
-        } else {
-            Err(ClarifaiError::HttpStatusError)
+        let mut bulk = vec![];
+
+        for image_url in image_urls {
+            bulk.push(ImageUrl { url: image_url });
         }
+
+        let mut request = Request::new(Method::Post, request_url);
+        request.json(bulk);
+
+        self.add_headers(&mut request);
+
+        let response: ClarifaiResponse<Vec<Image>> = try!(request.send().decode_success());
+        Ok(response.results)
     }
 }
+
+fn request_url(route: &str) -> String {
+    format!("{}/{}", CLARIFAI_URL, route)
+}
+
+pub type ClarifaiResult<T> = Result<T, CursError>;

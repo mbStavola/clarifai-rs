@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Matthew Stavola <mstavola9@gmail.com>"]
 
 [dependencies]
-hyper = "0.7.2"
-serde_json = "0.6.0"
+curs = "0.1.2"
+serde = "0.7"
+serde_macros = "0.7.2"
+mime = "0.2.0"
 time = "0.1.34"

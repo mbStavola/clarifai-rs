@@ -3,18 +3,22 @@
 
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
+use std::fs::File;
 
 extern crate curs;
-use curs::{Request, FileUpload, DecodableResult, Method, CursError};
+use curs::{Request, DecodableResult, Method, CursError};
 use curs::hyper::header::{Authorization, Basic, Bearer, UserAgent};
 
 extern crate serde;
+
+extern crate rustc_serialize;
+use rustc_serialize::base64::ToBase64;
 
 extern crate time;
 
 mod model;
 use model::ClarifaiResponse;
-use model::image::{Image, ImageUrl};
+use model::image::{Image, ImageUrl, ImageFile};
 use model::oauth::OAuth;
 
 static CLARIFAI_URL: &'static str = "https://api2-prod.clarifai.com/v2";
@@ -80,14 +84,16 @@ impl<'a> Clarifai<'a> {
     }
 
     fn add_headers(&self, request: &mut Request) {
-        request.header(Authorization(Bearer { token: self.access_token.borrow().deref().to_string() }))
+        request.header(Authorization(Bearer {
+                   token: self.access_token.borrow().deref().to_string(),
+               }))
                .header(UserAgent("clarifai-rs".to_string()));
     }
 
-    pub fn add_image(&self, image_url: &str) -> ClarifaiResult<Image> {
+    pub fn add_image_from_url(&self, image_url: &str) -> ClarifaiResult<Image> {
         try!(self.ensure_validity());
 
-        let request_url = "http://requestb.in/192k4mo1";
+        let request_url = &request_url("images");
 
         let mut request = Request::new(Method::Post, request_url);
         request.json(ImageUrl { url: image_url });
@@ -98,7 +104,7 @@ impl<'a> Clarifai<'a> {
         Ok(response.results)
     }
 
-    pub fn add_images(&self, image_urls: Vec<&str>) -> ClarifaiResult<Vec<Image>> {
+    pub fn add_images_from_url(&self, image_urls: Vec<&str>) -> ClarifaiResult<Vec<Image>> {
         try!(self.ensure_validity());
 
         let request_url = &request_url("images/bulk");
@@ -116,6 +122,65 @@ impl<'a> Clarifai<'a> {
 
         let response: ClarifaiResponse<Vec<Image>> = try!(request.send().decode_success());
         Ok(response.results)
+    }
+
+    pub fn get_image(&self, id: &str) -> ClarifaiResult<Image> {
+        try!(self.ensure_validity());
+
+        let request_url = &request_url(&format!("images/{}", id));
+
+        let mut request = Request::new(Method::Get, request_url);
+
+        self.add_headers(&mut request);
+
+        let response: ClarifaiResponse<Image> = try!(request.send().decode_success());
+        Ok(response.results)
+    }
+
+    pub fn get_images(&self, per_page: i32, page: i32) -> ClarifaiResult<Vec<Image>> {
+        try!(self.ensure_validity());
+
+        let per_page = &per_page.to_string();
+        let page = &page.to_string();
+
+        let request_url = &request_url("images");
+
+        let mut request = Request::new(Method::Get, request_url);
+        request.params(vec![("per_page", &per_page[..]), ("page", &page[..])]);
+
+        self.add_headers(&mut request);
+
+        let response: ClarifaiResponse<Vec<Image>> = try!(request.send().decode_success());
+        Ok(response.results)
+    }
+
+    pub fn image_iter(&self, per_page: i32) -> ImageLibrary {
+        ImageLibrary {
+            client: self,
+
+            per_page: per_page,
+            page: 0,
+        }
+    }
+}
+
+pub struct ImageLibrary<'a> {
+    client: &'a Clarifai<'a>,
+
+    per_page: i32,
+    page: i32,
+}
+
+impl<'a> Iterator for ImageLibrary<'a> {
+    type Item = Vec<Image>;
+
+    fn next(&mut self) -> Option<Vec<Image>> {
+        if let Ok(result) = self.client.get_images(self.per_page, self.page) {
+            self.page += 1;
+            Some(result)
+        } else {
+            None
+        }
     }
 }
 

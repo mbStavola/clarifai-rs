@@ -3,9 +3,16 @@ use clarifai::Clarifai;
 
 #[test]
 fn add_image() {
-    let mut client: Clarifai = Clarifai::new().unwrap();
+    let client: Clarifai = Clarifai::new("Lkr0GNgteFBLYcOpfDP7rMb_JQIXcfcIfGhm3zmR",
+                                         "HX4AUbn6qnZT5d1Y7p_yQaj_PiDRYuSsFPmwsXiJ")
+                               .unwrap();
 
-    let response = client.add_image("https://www.rust-lang.org/logos/rust-logo-512x512.png");
+    let response = client.add_image_from_url("https://www.rust-lang.org/logos/rust-logo-512x512.\
+                                              png");
+
+    println!("{:#?}", response);
+
+    let response = client.get_images(100, 1);
 
     println!("{:#?}", response);
 }

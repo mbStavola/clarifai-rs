@@ -4,7 +4,12 @@ pub struct Image {
     pub url: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct ImageUrl<'a> {
     pub url: &'a str,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ImageFile<'a> {
+    pub base64: &'a str,
 }

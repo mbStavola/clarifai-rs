@@ -1,0 +1,10 @@
+language: rust
+script: cargo build && cargo test
+rust:
+    - nightly
+branches:
+    only:
+        - auto
+
+notifications:
+    webhooks: http://homuslice.herokuapp.com/travis

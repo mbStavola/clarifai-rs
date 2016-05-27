@@ -1,6 +1,8 @@
 # clarifai-rs
 Crate for image recognition / tagging using the [Clarifai](http://www.clarifai.com/) API.
 
+[![Build Status](https://travis-ci.org/mbStavola/clarifai-rs.svg?branch=master)](https://travis-ci.org/mbStavola/clarifai-rs)
+
 WIP
 
 ## Use

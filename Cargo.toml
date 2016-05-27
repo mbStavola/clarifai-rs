@@ -1,9 +1,18 @@
 [package]
 name = "clarifai"
 version = "0.1.0"
-authors = ["Matthew Stavola <mstavola9@gmail.com>"]
+authors = ["Matthew Freitas-Stavola <matt@stavola.xyz>"]
+repository = "https://github.com/mbStavola/clarifai-rs.git"
+homepage = "https://github.com/mbStavola/clarifai-rs.git"
+license = "MIT"
+readme = "README.md"
+documentation = "http://stavola.xyz/clarifai-rs/"
+description = "Client crate for Clarifai's REST API"
 
 [dependencies]
-hyper = "0.7.2"
-serde_json = "0.6.0"
+curs = "0.1.2"
+serde = "0.7"
+serde_macros = "0.7.2"
+rustc-serialize = "0.3"
+mime = "0.2.0"
 time = "0.1.34"
